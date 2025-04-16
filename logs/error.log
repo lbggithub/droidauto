@@ -1,0 +1,25 @@
+2025-04-16 15:01:40 ERROR: 调用LLM API失败: connect ETIMEDOUT 31.13.84.34:443
+2025-04-16 15:01:40 ERROR: 处理AI指令失败: connect ETIMEDOUT 31.13.84.34:443
+2025-04-16 15:01:40 ERROR: 处理AI指令失败: connect ETIMEDOUT 31.13.84.34:443
+2025-04-16 15:09:53 ERROR: 调用LLM API失败: Request failed with status code 400
+2025-04-16 15:09:53 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:09:53 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:15:11 ERROR: 调用LLM API失败: Request failed with status code 400
+2025-04-16 15:15:11 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:15:11 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:17:57 ERROR: 调用LLM API失败: Request failed with status code 400
+2025-04-16 15:17:57 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:17:57 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:19:18 ERROR: 调用LLM API失败: Request failed with status code 400
+2025-04-16 15:19:18 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:19:18 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:20:05 ERROR: 调用LLM API失败: Request failed with status code 400
+2025-04-16 15:20:05 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:20:05 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:21:29 ERROR: 调用LLM API失败: Request failed with status code 400
+2025-04-16 15:21:29 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:21:29 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:23:32 ERROR: 调用LLM API失败: 状态码 400
+2025-04-16 15:23:32 ERROR: 错误详情: {"code":20041,"message":"The model is not a VLM (Vision Language Model). Please use text-only prompts.","data":null}
+2025-04-16 15:23:32 ERROR: 处理AI指令失败: Request failed with status code 400
+2025-04-16 15:23:32 ERROR: 处理AI指令失败: Request failed with status code 400

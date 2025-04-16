@@ -1,0 +1,51 @@
+{
+  "name": "droidauto",
+  "version": "0.1.0",
+  "description": "基于AI的Android自动化控制框架",
+  "main": "server/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:client": "vite",
+    "build": "tsc && vite build",
+    "build:server": "tsc --project tsconfig.server.json",
+    "lint": "eslint . --ext .ts,.vue",
+    "test": "jest"
+  },
+  "dependencies": {
+    "axios": "^1.8.4",
+    "dotenv": "^16.5.0",
+    "express": "^4.21.2",
+    "langchain": "^0.0.146",
+    "node-adb": "^0.1.6",
+    "pinia": "^2.3.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "vue": "^3.5.13",
+    "winston": "^3.17.0",
+    "xml2js": "^0.6.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.17.30",
+    "@types/socket.io-client": "^3.0.0",
+    "@types/xml2js": "^0.4.14",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@vitejs/plugin-vue": "^4.6.2",
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.1",
+    "eslint-plugin-vue": "^9.33.0",
+    "jest": "^29.7.0",
+    "less": "^4.3.0",
+    "nodemon": "^3.1.9",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vite": "^4.5.13",
+    "vue-tsc": "^2.2.8"
+  },
+  "author": "",
+  "license": "MIT",
+  "packageManager": "pnpm@10.6.2+sha1.7f417eb782bab712a1a9bd0206887dcee502d03e"
+}
