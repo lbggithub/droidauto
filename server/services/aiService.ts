@@ -407,8 +407,6 @@ async function callLLMAPI(prompt: PromptContent, screenshot: any = null): Promis
       messages.push({ role: 'system', content: prompt.recentHistoryPrompt })
     }
 
-    logger.info(`历史上下文提示: ${JSON.stringify(messages)}`)
-
     // 添加当前状态
     const userContent = prompt.currentStatePrompt
     let userMessage: OpenAIMessage = { role: 'user', content: userContent }
@@ -416,7 +414,7 @@ async function callLLMAPI(prompt: PromptContent, screenshot: any = null): Promis
     // 如果有截图，则添加到消息中
     if (screenshot && screenshot.base64) {
       userMessage.content = [
-        // { type: 'text', text: userContent },
+        { type: 'text', text: userContent },
         {
           type: 'image_url',
           image_url: {
