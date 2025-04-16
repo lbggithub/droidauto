@@ -3,31 +3,13 @@ import logger from './utils/logger'
 import { executeCommand } from './services/commandExecutor'
 import { getScreenshot } from './services/androidConnection'
 import { extractUIElements } from './services/uiExtractor'
-import { handleAIInstruction } from './services/aiService'
+import { handleAIInstruction, SessionContext } from './services/aiService'
 
 /**
  * 命令接口
  */
 interface Command {
   type: string
-  [key: string]: any
-}
-
-/**
- * AI响应接口
- */
-interface AIResponse {
-  thinking?: string
-  commands?: Command[]
-  [key: string]: any
-}
-
-/**
- * 会话上下文接口
- */
-interface SessionContext {
-  lastInstruction?: string
-  lastResponse?: AIResponse
   [key: string]: any
 }
 
@@ -72,8 +54,11 @@ export function setupSocketHandlers(io: SocketServer): void {
         // 记录会话上下文
         socket.sessionContext = {
           ...socket.sessionContext,
-          lastInstruction: instruction,
-          lastResponse: response,
+          history: socket.sessionContext?.history || [],
+          lastOperation: {
+            instruction: instruction,
+            timestamp: new Date().toISOString(),
+          },
         }
 
         // 执行AI返回的命令
@@ -94,6 +79,49 @@ export function setupSocketHandlers(io: SocketServer): void {
                 success: true,
                 result,
               })
+
+              // 命令执行后等待一小段时间，让界面有时间更新
+              await new Promise((resolve) => setTimeout(resolve, 1000))
+
+              // 检查命令是否完成了整个任务，如果没有完成，获取新的屏幕状态并继续处理
+              if (!command.isTaskComplete) {
+                logger.info('任务尚未完成，继续处理工作流...')
+
+                // 获取新的屏幕截图和UI元素
+                const newScreenshot = await getScreenshot()
+                const newUiElements = await extractUIElements()
+                const processedNewUiElements = {
+                  ...newUiElements,
+                  timestamp: typeof newUiElements.timestamp === 'string' ? Number(newUiElements.timestamp) : newUiElements.timestamp,
+                }
+
+                // 使用持续处理模式继续处理任务
+                const continuationResponse = await handleAIInstruction({
+                  instruction,
+                  screenshot: newScreenshot,
+                  uiElements: processedNewUiElements,
+                  sessionContext: socket.sessionContext || ({} as any),
+                  isContinuation: true,
+                  previousCommand: command,
+                })
+
+                // 如果有结果数据，发送给客户端
+                if (continuationResponse.result) {
+                  socket.emit('task-result', {
+                    instruction,
+                    result: continuationResponse.result,
+                  })
+                }
+
+                // 如果有新命令要执行，添加到响应中
+                if (continuationResponse.commands && continuationResponse.commands.length > 0) {
+                  // 合并响应
+                  response.commands = [...response.commands, ...continuationResponse.commands]
+
+                  // 发送更新的响应给客户端
+                  socket.emit('instruction-response-update', continuationResponse)
+                }
+              }
             } catch (error) {
               const errorMessage = error instanceof Error ? error.message : String(error)
               logger.error(`命令执行失败: ${errorMessage}`)

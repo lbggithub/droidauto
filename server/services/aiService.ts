@@ -34,6 +34,8 @@ export interface AIResponse {
   commands: Command[]
   rawResponse?: string
   error?: string
+  result?: string
+  isTaskComplete?: boolean
 }
 
 /**
@@ -61,6 +63,8 @@ export interface HandleInstructionOptions {
   sessionContext?: SessionContext
   isErrorCorrection?: boolean
   error?: ErrorInfo | null
+  isContinuation?: boolean
+  previousCommand?: Command
 }
 
 /**
@@ -80,13 +84,24 @@ export interface PromptContent {
  * @returns {Promise<AIResponse>} AI处理结果
  */
 async function handleAIInstruction(options: HandleInstructionOptions): Promise<AIResponse> {
-  const { instruction = '', screenshot, uiElements, sessionContext = {}, isErrorCorrection = false, error = null } = options
+  const {
+    instruction = '',
+    screenshot,
+    uiElements,
+    sessionContext = {},
+    isErrorCorrection = false,
+    error = null,
+    isContinuation = false,
+    previousCommand = null,
+  } = options
 
   try {
     // 准备提示内容
     const prompt =
       isErrorCorrection && error
         ? buildErrorCorrectionPrompt(error, screenshot, uiElements, sessionContext)
+        : isContinuation && previousCommand
+        ? buildContinuationPrompt(instruction, previousCommand, screenshot, uiElements, sessionContext)
         : buildInstructionPrompt(instruction, screenshot, uiElements, sessionContext)
 
     // 调用大语言模型API
@@ -120,49 +135,71 @@ async function handleAIInstruction(options: HandleInstructionOptions): Promise<A
  */
 function buildInstructionPrompt(instruction: string, screenshot: any, uiElements: any, sessionContext: SessionContext): PromptContent {
   // 基础系统提示
-  const systemPrompt = `你是DroidAuto安卓自动化助手，可以控制Android设备执行各种任务。
+  const systemPrompt = `你是DroidAuto安卓自动化助手，可以控制Android设备执行各种任务，以及根据当前屏幕状态和UI元素，返回用户需要的信息。
 请遵循以下规则：
 1. 分析当前屏幕截图和UI元素，理解用户当前所在的界面和可执行的操作
-2. 根据用户指令，制定合适的操作步骤
+2. 根据用户指令，制定完整的操作计划，分步骤执行
 3. 返回JSON格式的操作命令，确保每个命令的坐标或参数准确无误
 4. 所有文本必须使用中文回复
-5. 回复必须包含thinking和commands两个字段
+5. 回复必须包含thinking、commands和isTaskComplete三个字段
+6. 对于多步骤任务，所有中间步骤的命令和整体响应都必须将isTaskComplete设为false
+7. 如果命令只是一个中间步骤（如点击导航到其他页面），确保将该命令的isTaskComplete设为false
+8. 只有当已经获取到任务要求的完整结果数据时，才将isTaskComplete设为true
+9. 当任务完成时，必须提供明确的result结果数据
+10. 严格按照示例格式返回命令，不要使用替代参数名称
 
 可用的命令类型如下，必须使用"type"字段指定类型：
 - tap: 点击屏幕坐标，必须包含x和y参数
-  例如: {"type": "tap", "x": 160, "y": 200}
+  例如: {"type": "tap", "x": 160, "y": 200, "isTaskComplete": false}
 - swipe: 滑动屏幕，必须包含startX, startY, endX, endY参数，可选duration参数
-  例如: {"type": "swipe", "startX": 160, "startY": 800, "endX": 160, "endY": 200, "duration": 300}
+  例如: {"type": "swipe", "startX": 160, "startY": 800, "endX": 160, "endY": 200, "duration": 300, "isTaskComplete": false}
+  注意: 不要使用coordinate或coordinate2参数，必须使用startX, startY, endX, endY
 - text: 输入文本，必须包含text参数
-  例如: {"type": "text", "text": "要输入的文字"}
+  例如: {"type": "text", "text": "要输入的文字", "isTaskComplete": false}
 - key: 按下按键，必须包含keycode参数
-  例如: {"type": "key", "keycode": 4}
+  例如: {"type": "key", "keycode": 4, "isTaskComplete": false}
 - wait: 等待一段时间，必须包含duration参数(毫秒)
-  例如: {"type": "wait", "duration": 1000}
+  例如: {"type": "wait", "duration": 1000, "isTaskComplete": false}
 - back: 返回键
-  例如: {"type": "back"}
+  例如: {"type": "back", "isTaskComplete": false}
 - home: 主页键
-  例如: {"type": "home"}
+  例如: {"type": "home", "isTaskComplete": false}
 - app_switch: 最近任务键
-  例如: {"type": "app_switch"}
+  例如: {"type": "app_switch", "isTaskComplete": false}
 - composite: 复合命令，必须包含commands数组
-  例如: {"type": "composite", "commands": [{"type": "tap", "x": 160, "y": 200}, {"type": "wait", "duration": 1000}]}
+  例如: {"type": "composite", "commands": [{"type": "tap", "x": 160, "y": 200}, {"type": "wait", "duration": 1000}], "isTaskComplete": false}
+
+每个命令都应该包含以下字段：
+- isTaskComplete: 布尔值，指示此命令执行后任务是否完成
+- isFinalCommand: 布尔值，指示此命令是否为当前步骤的最后一个命令(可选，默认最后一个命令为最终命令)
 
 完整的响应格式示例：
 {
   "thinking": "我对当前屏幕的分析...",
   "commands": [
-    {"type": "tap", "x": 160, "y": 200},
-    {"type": "wait", "duration": 1000}
-  ]
+    {"type": "tap", "x": 160, "y": 200, "isTaskComplete": false}
+  ],
+  "isTaskComplete": false
+}
+
+对于需要多步骤操作的任务，系统会在每个命令执行后重新获取屏幕状态，并让你继续提供下一步命令，直到整个任务完成。
+当任务完成时，应提供result字段并将isTaskComplete设为true：
+
+{
+  "thinking": "任务已完成...",
+  "commands": [],
+  "result": "14天后的天气是晴天，温度26度",
+  "isTaskComplete": true
 }
 
 当UI元素无法分析或识别时，可尝试基于视觉识别的方法：
-1. 分析屏幕截图，查找视觉元素如按钮、文本框等
-2. 估计元素在屏幕上的位置和尺寸
-3. 使用tap命令点击估计的坐标位置
+1. 分析屏幕截图，查找视觉元素如按钮、文本框、图表等
+2. 识别和提取屏幕上的文本内容，特别是日期、数字和关键信息
+3. 估计元素在屏幕上的位置和尺寸
+4. 使用tap命令点击估计的坐标位置
+5. 对于多步骤任务，每完成一个步骤后要继续监测新的屏幕内容，直到获取最终结果
 
-尽可能精确地执行用户指令，无法执行时给出原因。`
+尽可能精确地执行用户指令，记住，你的目标是完成整个任务，而不仅仅是执行单个命令。`
 
   // 历史上下文提示
   let contextPrompt = ''
@@ -211,12 +248,14 @@ function buildErrorCorrectionPrompt(error: ErrorInfo, screenshot: any, uiElement
 4. 提供修正后的命令或替代方案
 5. 所有文本必须使用中文回复
 6. 回复必须包含thinking和commands两个字段
+7. 严格按照示例格式返回命令，不要使用替代参数名称
 
 可用的命令类型如下，必须使用"type"字段指定类型：
 - tap: 点击屏幕坐标，必须包含x和y参数
   例如: {"type": "tap", "x": 160, "y": 200}
 - swipe: 滑动屏幕，必须包含startX, startY, endX, endY参数，可选duration参数
   例如: {"type": "swipe", "startX": 160, "startY": 800, "endX": 160, "endY": 200, "duration": 300}
+  注意: 不要使用coordinate或coordinate2参数，必须使用startX, startY, endX, endY
 - text: 输入文本，必须包含text参数
   例如: {"type": "text", "text": "要输入的文字"}
 - key: 按下按键，必须包含keycode参数
@@ -273,6 +312,86 @@ ${formatUIElements(uiElements)}`
     systemPrompt,
     errorContextPrompt,
     recentHistoryPrompt,
+    currentStatePrompt,
+  }
+}
+
+/**
+ * 构建持续处理提示
+ * @param {string} instruction - 用户原始指令
+ * @param {Command} previousCommand - 上一个执行的命令
+ * @param {Object} screenshot - 屏幕截图
+ * @param {Object} uiElements - UI元素
+ * @param {SessionContext} sessionContext - 会话上下文
+ * @returns {PromptContent} 提示内容
+ */
+function buildContinuationPrompt(
+  instruction: string,
+  previousCommand: Command,
+  screenshot: any,
+  uiElements: any,
+  sessionContext: SessionContext
+): PromptContent {
+  // 持续处理系统提示
+  const systemPrompt = `你是DroidAuto安卓自动化助手，正在执行一个持续的工作流。
+上一个命令已经执行完成，现在你需要分析新的屏幕状态，并决定下一步操作。
+
+用户的原始指令是: "${instruction}"
+
+请遵循以下规则：
+1. 分析当前屏幕截图和UI元素，理解用户当前所在的界面和可执行的操作
+2. 判断任务是否已完成，特别注意区分"导航到相关页面"和"完成整个任务目标"的区别
+3. 对于多步骤任务（如"总结14天后的天气"），仅点击导航按钮还不算完成任务
+4. 只有当已经获取到用户要求的数据（如具体天气信息）时，才算任务完成
+5. 如果任务已完成，提供详细的结果数据并将isTaskComplete设为true
+6. 如果任务未完成，提供下一步命令并将isTaskComplete设为false
+7. 所有文本必须使用中文回复
+8. 回复必须包含thinking、commands、result(如果任务完成)和isTaskComplete字段
+9. 严格按照示例格式返回命令，不要使用替代参数名称
+
+可用的命令类型与基本指令相同，但需添加以下字段：
+- isTaskComplete: 布尔值，指示此命令执行后任务是否完成
+- isFinalCommand: 布尔值，指示此命令是否为当前步骤的最后一个命令
+
+点击屏幕的正确格式为：
+{"type": "tap", "x": 160, "y": 200, "isTaskComplete": false, "isFinalCommand": true}
+注意: 不要使用coordinate:[160, 200]参数，必须使用x和y
+
+滑动屏幕的正确格式为：
+{"type": "swipe", "startX": 160, "startY": 800, "endX": 160, "endY": 200, "duration": 300, "isTaskComplete": false}
+注意: 不要使用coordinate或coordinate2参数，必须使用startX, startY, endX, endY
+
+完整的响应格式示例：
+{
+  "thinking": "我对当前屏幕的分析...",
+  "commands": [
+    {"type": "tap", "x": 160, "y": 200, "isTaskComplete": false, "isFinalCommand": true}
+  ],
+  "isTaskComplete": false
+}
+
+或当任务完成时：
+{
+  "thinking": "任务已完成的分析...",
+  "commands": [],
+  "result": "这是任务的最终结果，例如14天后的天气数据是晴天，温度26度",
+  "isTaskComplete": true
+}
+
+记住，你的目标是完整执行用户的指令，而不仅仅是执行单个操作。`
+
+  // 上一步操作信息
+  const previousActionPrompt = `上一步执行的命令: ${JSON.stringify(previousCommand)}`
+
+  // 当前状态提示
+  const currentStatePrompt = `当前屏幕状态:
+${formatUIElements(uiElements)}
+
+用户原始指令: ${instruction}`
+
+  return {
+    systemPrompt,
+    contextPrompt: previousActionPrompt,
     currentStatePrompt,
   }
 }
@@ -415,6 +534,7 @@ async function callLLMAPI(prompt: PromptContent, screenshot: any = null): Promis
       max_tokens: 4096,
       top_p: 0.7,
       n: 1,
+      response_format: { type: 'json_object' },
     }
 
     // 记录图片数量（如果有）
@@ -428,6 +548,8 @@ async function callLLMAPI(prompt: PromptContent, screenshot: any = null): Promis
         Authorization: `Bearer ${apiKey}`,
       },
     })
+
+    logger.info(`LLM API响应: ${JSON.stringify(response.data)}`)
 
     return response.data
   } catch (error) {
@@ -478,7 +600,7 @@ function parseModelResponse(response: any): AIResponse {
           parsedResponse.commands = []
         }
 
-        // 处理可能使用了action而不是type的命令
+        // 处理命令中的任务完成标志
         parsedResponse.commands = parsedResponse.commands.map((cmd: any) => {
           // 如果使用了action而不是type，将action转换为type
           if (cmd.action && !cmd.type) {
@@ -495,8 +617,49 @@ function parseModelResponse(response: any): AIResponse {
 
             return newCmd
           }
+
+          // 处理swipe命令中使用coordinate和coordinate2的情况
+          if (cmd.type === 'swipe') {
+            // 如果使用coordinate和coordinate2格式
+            if (Array.isArray(cmd.coordinate) && Array.isArray(cmd.coordinate2)) {
+              const newCmd = { ...cmd }
+              newCmd.startX = cmd.coordinate[0]
+              newCmd.startY = cmd.coordinate[1]
+              newCmd.endX = cmd.coordinate2[0]
+              newCmd.endY = cmd.coordinate2[1]
+              delete newCmd.coordinate
+              delete newCmd.coordinate2
+              return newCmd
+            }
+            // 如果使用单一数组coordinate格式(假设格式为[startX, startY, endX, endY])
+            else if (Array.isArray(cmd.coordinate) && cmd.coordinate.length === 4) {
+              const newCmd = { ...cmd }
+              newCmd.startX = cmd.coordinate[0]
+              newCmd.startY = cmd.coordinate[1]
+              newCmd.endX = cmd.coordinate[2]
+              newCmd.endY = cmd.coordinate[3]
+              delete newCmd.coordinate
+              return newCmd
+            }
+          }
+
+          // 添加isTaskComplete和isFinalCommand属性（如果未指定）
+          if (cmd.isTaskComplete === undefined) {
+            cmd.isTaskComplete = parsedResponse.isTaskComplete || false
+          }
+
+          if (cmd.isFinalCommand === undefined) {
+            // 默认最后一个命令为最终命令
+            cmd.isFinalCommand = false
+          }
+
           return cmd
         })
+
+        // 如果有命令，将最后一个命令标记为最终命令
+        if (parsedResponse.commands.length > 0) {
+          parsedResponse.commands[parsedResponse.commands.length - 1].isFinalCommand = true
+        }
 
         return parsedResponse as AIResponse
       }

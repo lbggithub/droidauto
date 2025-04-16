@@ -48,6 +48,12 @@
                     </div>
                   </div>
                 </div>
+                <div v-if="message.result" class="result">
+                  <h4>结果</h4>
+                  <div class="result-content">
+                    {{ message.result }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -85,6 +91,7 @@ interface Message {
   content?: string
   thinking?: string
   commands?: Command[]
+  result?: string
 }
 
 // 响应式状态
@@ -145,6 +152,7 @@ const initSocket = (): void => {
       role: 'ai',
       thinking: response.thinking,
       commands: response.commands,
+      result: response.result,
     })
 
     isProcessing.value = false
@@ -160,6 +168,39 @@ const initSocket = (): void => {
   // 监听命令执行结果
   socket.value.on('command-result', (result) => {
     console.log('命令执行结果:', result)
+  })
+
+  // 监听任务最终结果
+  socket.value.on('task-result', (result) => {
+    console.log('任务最终结果:', result)
+    // 更新最后一条AI消息
+    for (let i = chatHistory.value.length - 1; i >= 0; i--) {
+      if (chatHistory.value[i].role === 'ai') {
+        chatHistory.value[i].result = result.result
+        scrollToBottom()
+        break
+      }
+    }
+  })
+
+  // 监听指令响应更新
+  socket.value.on('instruction-response-update', (update) => {
+    console.log('指令响应更新:', update)
+    // 更新最后一条AI消息
+    for (let i = chatHistory.value.length - 1; i >= 0; i--) {
+      if (chatHistory.value[i].role === 'ai') {
+        // 添加新命令
+        if (update.commands) {
+          chatHistory.value[i].commands = [...(chatHistory.value[i].commands || []), ...update.commands]
+        }
+        // 更新结果
+        if (update.result) {
+          chatHistory.value[i].result = update.result
+        }
+        scrollToBottom()
+        break
+      }
+    }
   })
 
   // 监听错误
@@ -272,6 +313,25 @@ body {
   display: flex;
   flex-direction: column;
   padding: 0.5rem;
+}
+
+/* 添加结果区域样式 */
+.result {
+  margin-top: 1rem;
+  padding: 0.5rem 1rem;
+  background-color: #f0f8ff;
+  border-radius: 4px;
+  border-left: 4px solid #1e90ff;
+}
+
+.result h4 {
+  margin: 0 0 0.5rem 0;
+  color: #0066cc;
+}
+
+.result-content {
+  white-space: pre-wrap;
+  line-height: 1.5;
 }
 
 .header {

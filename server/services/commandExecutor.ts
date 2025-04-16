@@ -22,6 +22,8 @@ export enum CommandType {
  */
 export interface BaseCommand {
   type: CommandType | string
+  isTaskComplete?: boolean
+  isFinalCommand?: boolean
 }
 
 /**
