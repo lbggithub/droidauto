@@ -10,6 +10,7 @@ import { setupSocketHandlers } from './socket'
 import logger from './utils/logger'
 import androidRoutes from './routes/androidRoutes'
 import aiRoutes from './routes/aiRoutes'
+import uiRoutes from './routes/uiRoutes'
 
 // 在 ES 模块中获取 __dirname 的替代方案
 const __filename = fileURLToPath(import.meta.url)
@@ -38,6 +39,7 @@ app.use(express.static(path.join(__dirname, '../client/dist')))
 // 配置 API 路由
 app.use('/api/android', androidRoutes)
 app.use('/api/ai', aiRoutes)
+app.use('/api/ui', uiRoutes)
 
 // 前端路由处理
 app.get('*', (req, res) => {

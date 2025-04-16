@@ -29,8 +29,18 @@ async function getCurrentScreenState() {
   const screenshot = await getScreenshot()
   const uiElements = await extractUIElements()
 
+  // 创建适合保存到历史记录的轻量级数据
+  const historyScreenshot = {
+    path: screenshot.path,
+    timestamp: screenshot.timestamp,
+    // 不包含base64数据，只在当前请求中使用
+  }
+
   return {
+    // 完整截图数据，用于当前请求
     screenshot,
+    // 轻量级截图数据，用于保存到历史记录
+    historyScreenshot,
     uiElements: {
       ...uiElements,
       timestamp: typeof uiElements.timestamp === 'string' ? Number(uiElements.timestamp) : uiElements.timestamp,
@@ -127,7 +137,7 @@ async function continueTaskExecution(
   logger.info(`${logPrefix}任务尚未完成，继续处理工作流...`)
 
   // 获取新的屏幕状态
-  const { screenshot, uiElements } = await getCurrentScreenState()
+  const { screenshot, historyScreenshot, uiElements } = await getCurrentScreenState()
 
   // 请求AI继续处理任务
   const continuationResponse = await handleAIInstruction({
@@ -168,7 +178,7 @@ export function setupSocketHandlers(io: SocketServer): void {
 
       try {
         // 获取当前屏幕状态
-        const { screenshot, uiElements } = await getCurrentScreenState()
+        const { screenshot, historyScreenshot, uiElements } = await getCurrentScreenState()
 
         socket.emit('handle-instruction-start')
 
@@ -220,7 +230,7 @@ export function setupSocketHandlers(io: SocketServer): void {
 async function handleErrorCorrection(socket: SessionSocket, command: Command, error: any): Promise<void> {
   try {
     // 获取当前屏幕状态
-    const { screenshot, uiElements } = await getCurrentScreenState()
+    const { screenshot, historyScreenshot, uiElements } = await getCurrentScreenState()
 
     // 发送纠错通知
     socket.emit('error-correction-start')

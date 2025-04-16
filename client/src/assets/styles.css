@@ -218,6 +218,7 @@ body {
 
 .command-details {
   font-size: 0.9rem;
+  word-break: break-all;
 }
 
 .input-area {

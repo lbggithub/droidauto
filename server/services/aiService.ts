@@ -12,7 +12,25 @@ export interface SessionHistoryItem {
   instruction: string
   screenshot?: { timestamp: number }
   uiElements?: { timestamp: number }
-  parsedResponse: AIResponse
+  parsedResponse: AIResponse | SimpleAIResponse
+}
+
+/**
+ * 简化的AI响应接口，用于历史记录
+ */
+interface SimpleAIResponse {
+  thinking: string
+  commands: SimpleCommand[]
+  result?: string
+  isTaskComplete?: boolean
+}
+
+/**
+ * 简化的命令接口，用于历史记录
+ */
+interface SimpleCommand {
+  type: string
+  isTaskComplete?: boolean
 }
 
 /**
@@ -125,7 +143,7 @@ const BASE_SYSTEM_PROMPT = `你是DroidAuto安卓自动化助手，可以控制A
 
 每个命令都应该包含以下字段：
 - isTaskComplete: 布尔值，指示此命令执行后任务是否完成
-- isFinalCommand: 布尔值，指示此命令是否为当前步骤的最后一个命令(可选，默认最后一个命令为最终命令)`
+- isFinalCommand: 布尔值，指示此命令是否为当前步骤的最后一个命令(可选，默认最后一个命令)`
 
 /**
  * 处理AI指令
@@ -159,11 +177,11 @@ async function handleAIInstruction(options: HandleInstructionOptions): Promise<A
     // 解析模型响应
     const parsedResponse = parseModelResponse(response)
 
-    // 添加响应到会话上下文
+    // 添加响应到会话上下文，只存储轻量级历史数据
     updateSessionContext(sessionContext, {
       instruction: instruction || '自动纠错',
-      screenshot: screenshot ? { timestamp: screenshot.timestamp } : undefined,
-      uiElements: uiElements ? { timestamp: uiElements.timestamp } : undefined,
+      screenshot: screenshot ? { timestamp: screenshot.timestamp } : undefined, // 只保存时间戳
+      uiElements: uiElements ? { timestamp: uiElements.timestamp } : undefined, // 只保存时间戳
       parsedResponse,
     })
 
@@ -213,18 +231,26 @@ function buildInstructionPrompt(instruction: string, screenshot: any, uiElements
   // 历史上下文提示
   let contextPrompt = ''
   if (sessionContext.history && sessionContext.history.length > 0) {
-    contextPrompt = '历史操作记录:\n'
-    sessionContext.history.forEach((item, index) => {
+    contextPrompt = '历史操作记录(简要):\n'
+    // 只取最近的3个历史记录
+    const recentHistory = sessionContext.history.slice(-3)
+    recentHistory.forEach((item, index) => {
       contextPrompt += `操作${index + 1}: ${item.instruction}\n`
       if (item.parsedResponse && item.parsedResponse.thinking) {
-        contextPrompt += `分析: ${item.parsedResponse.thinking.substring(0, 100)}...\n`
+        // 仅使用分析的前1000个字符
+        contextPrompt += `分析: ${item.parsedResponse.thinking.substring(0, 1000)}...\n`
+      }
+
+      // 添加命令类型简要描述
+      if (item.parsedResponse && item.parsedResponse.commands && item.parsedResponse.commands.length > 0) {
+        const cmdTypes = item.parsedResponse.commands.map((cmd) => cmd.type).join(', ')
+        contextPrompt += `执行: ${cmdTypes}\n`
       }
     })
   }
 
   // 当前状态提示
-  const currentStatePrompt = `当前屏幕状态:
-${formatUIElements(uiElements)}
+  const currentStatePrompt = `当前屏幕UI元素:${uiElements}
 
 用户指令: ${instruction}`
 
@@ -274,16 +300,22 @@ function buildErrorCorrectionPrompt(error: ErrorInfo, screenshot: any, uiElement
   // 最近操作历史提示
   let recentHistoryPrompt = ''
   if (sessionContext.history && sessionContext.history.length > 0) {
-    const recentHistory = sessionContext.history.slice(-2)
+    // 只取最近的1个历史记录
+    const recentHistory = sessionContext.history.slice(-1)
     recentHistoryPrompt = '最近操作记录:\n'
     recentHistory.forEach((item, index) => {
-      recentHistoryPrompt += `操作${index + 1}: ${item.instruction}\n`
+      recentHistoryPrompt += `操作: ${item.instruction}\n`
+
+      // 添加命令类型简要描述
+      if (item.parsedResponse && item.parsedResponse.commands && item.parsedResponse.commands.length > 0) {
+        const cmdTypes = item.parsedResponse.commands.map((cmd) => cmd.type).join(', ')
+        recentHistoryPrompt += `执行: ${cmdTypes}\n`
+      }
     })
   }
 
   // 当前状态提示
-  const currentStatePrompt = `当前屏幕状态:
-${formatUIElements(uiElements)}`
+  const currentStatePrompt = `当前屏幕UI元素:${uiElements}`
 
   return {
     systemPrompt,
@@ -334,12 +366,17 @@ function buildContinuationPrompt(
   "isTaskComplete": true
 }`
 
-  // 上一步操作信息
-  const previousActionPrompt = `上一步执行的命令: ${JSON.stringify(previousCommand)}`
+  // 上一步操作信息 - 简化命令表示
+  const simplePrevCmd = {
+    type: previousCommand.type,
+    isTaskComplete: previousCommand.isTaskComplete,
+  }
+  const previousActionPrompt = `上一步执行的命令类型: ${simplePrevCmd.type}\n任务状态: ${
+    simplePrevCmd.isTaskComplete ? '已完成' : '进行中'
+  }`
 
   // 当前状态提示
-  const currentStatePrompt = `当前屏幕状态:
-${formatUIElements(uiElements)}
+  const currentStatePrompt = `当前屏幕状态:${uiElements}
 
 用户原始指令: ${instruction}`
 
@@ -348,60 +385,6 @@ ${formatUIElements(uiElements)}
     contextPrompt: previousActionPrompt,
     currentStatePrompt,
   }
-}
-
-/**
- * 格式化UI元素为文本
- */
-function formatUIElements(uiElements: any): string {
-  if (!uiElements || !uiElements.elements) {
-    return '无法获取UI元素'
-  }
-
-  // 简化的UI元素描述
-  function formatElement(element: any, indent: number = 0): string {
-    if (!element) return ''
-
-    const indentStr = ' '.repeat(indent * 2)
-    let result = `${indentStr}- 类型: ${element.type || '未知'}\n`
-
-    if (element.text) {
-      result += `${indentStr}  文本: "${element.text}"\n`
-    }
-
-    if (element.contentDesc) {
-      result += `${indentStr}  描述: "${element.contentDesc}"\n`
-    }
-
-    if (element.id) {
-      result += `${indentStr}  ID: ${element.id}\n`
-    }
-
-    if (element.clickable) {
-      result += `${indentStr}  可点击: 是\n`
-    }
-
-    if (element.bounds) {
-      result += `${indentStr}  位置: [${element.bounds.centerX},${element.bounds.centerY}]\n`
-    }
-
-    // 限制子元素数量
-    if (element.children && element.children.length > 0) {
-      const limitedChildren = element.children.slice(0, 5)
-      result += `${indentStr}  子元素(${Math.min(5, element.children.length)}/${element.children.length}):\n`
-      limitedChildren.forEach((child: any) => {
-        result += formatElement(child, indent + 1)
-      })
-
-      if (element.children.length > 5) {
-        result += `${indentStr}    ... 省略${element.children.length - 5}个子元素 ...\n`
-      }
-    }
-
-    return result
-  }
-
-  return formatElement(uiElements.elements)
 }
 
 /**
@@ -424,6 +407,8 @@ async function callLLMAPI(prompt: PromptContent, screenshot: any = null): Promis
       messages.push({ role: 'system', content: prompt.recentHistoryPrompt })
     }
 
+    logger.info(`历史上下文提示: ${JSON.stringify(messages)}`)
+
     // 添加当前状态
     const userContent = prompt.currentStatePrompt
     let userMessage: OpenAIMessage = { role: 'user', content: userContent }
@@ -431,7 +416,7 @@ async function callLLMAPI(prompt: PromptContent, screenshot: any = null): Promis
     // 如果有截图，则添加到消息中
     if (screenshot && screenshot.base64) {
       userMessage.content = [
-        { type: 'text', text: userContent },
+        // { type: 'text', text: userContent },
         {
           type: 'image_url',
           image_url: {
@@ -452,11 +437,21 @@ async function callLLMAPI(prompt: PromptContent, screenshot: any = null): Promis
       throw new Error('API配置错误')
     }
 
+    // 优化日志记录，避免记录大量数据
     logger.info(`调用LLM API: ${endpoint}, 模型: ${modelName}`)
 
-    if (screenshot && screenshot.base64) {
-      logger.info(`请求包含图片数据`)
-    }
+    // 只记录消息数量和类型，不记录完整内容
+    const messagesInfo = messages.map((msg) => {
+      const content = typeof msg.content === 'string' ? `文本(长度:${msg.content.length})` : `多模态(项目:${msg.content.length})`
+      return { role: msg.role, contentType: content }
+    })
+
+    logger.info(`请求消息概况: ${JSON.stringify(messagesInfo)}`)
+
+    // if (screenshot && screenshot.base64) {
+    //   const imageSize = Math.round((screenshot.base64.length * 3) / 4)
+    //   logger.info(`请求包含图片数据 (约 ${imageSize / 1024} KB)`)
+    // }
 
     const requestBody = {
       model: modelName,
@@ -475,6 +470,7 @@ async function callLLMAPI(prompt: PromptContent, screenshot: any = null): Promis
     })
 
     logger.info(`LLM API响应: ${JSON.stringify(response.data)}`)
+
     return response.data
   } catch (error) {
     logApiError(error as AxiosError)
@@ -595,7 +591,15 @@ function parseModelResponse(response: any): AIResponse {
           parsedResponse.commands[parsedResponse.commands.length - 1].isFinalCommand = true
         }
 
-        return parsedResponse as AIResponse
+        // 创建精简版响应对象，不包含原始响应数据
+        const cleanResponse: AIResponse = {
+          thinking: parsedResponse.thinking,
+          commands: parsedResponse.commands,
+          result: parsedResponse.result,
+          isTaskComplete: parsedResponse.isTaskComplete,
+        }
+
+        return cleanResponse
       }
     } catch (jsonError) {
       logger.error('解析JSON响应失败:', jsonError)
@@ -608,7 +612,7 @@ function parseModelResponse(response: any): AIResponse {
     return {
       thinking: thinkingMatch ? thinkingMatch[1].trim() : '无法解析思考过程',
       commands: commandsMatch ? [{ type: CommandType.TEXT, text: commandsMatch[1].trim() }] : [],
-      rawResponse: content,
+      // 不包含原始响应
     }
   } catch (error) {
     logger.error('解析模型响应失败:', error)
@@ -628,8 +632,27 @@ function updateSessionContext(sessionContext: SessionContext, newItem: SessionHi
     sessionContext.history = []
   }
 
+  // 简化AI响应，只保留关键信息
+  const simplifiedResponse: SimpleAIResponse = {
+    thinking: newItem.parsedResponse.thinking.substring(0, 150),
+    commands: newItem.parsedResponse.commands.map((cmd) => ({
+      type: cmd.type,
+      isTaskComplete: cmd.isTaskComplete,
+    })),
+    result: newItem.parsedResponse.result,
+    isTaskComplete: newItem.parsedResponse.isTaskComplete,
+  }
+
+  // 创建精简版历史项
+  const simplifiedItem: SessionHistoryItem = {
+    instruction: newItem.instruction,
+    screenshot: newItem.screenshot,
+    uiElements: newItem.uiElements,
+    parsedResponse: simplifiedResponse,
+  }
+
   // 添加新项目到历史记录
-  sessionContext.history.push(newItem)
+  sessionContext.history.push(simplifiedItem)
 
   // 限制历史记录大小
   if (sessionContext.history.length > MAX_CONTEXT_ITEMS) {

@@ -19,6 +19,7 @@
         </div>
         <div class="screen-controls">
           <button @click="refreshScreenshot" class="refresh-btn"><i class="fas fa-sync-alt"></i> 刷新屏幕</button>
+          <button @click="getFormattedUI" class="ui-btn"><i class="fas fa-list"></i> 显示UI结构</button>
         </div>
       </div>
 
@@ -31,6 +32,13 @@
           <div v-for="(message, index) in chatHistory" :key="index" class="message" :class="message.role">
             <div class="message-content">
               <p v-if="message.role === 'user'">{{ message.content }}</p>
+              <div v-else-if="message.role === 'system' && message.uiData" class="ui-data">
+                <h4>UI元素结构 ({{ message.timestamp }})</h4>
+                <pre>{{ message.uiData }}</pre>
+              </div>
+              <div v-else-if="message.role === 'system'" class="system-message">
+                <p>{{ message.content }}</p>
+              </div>
               <div v-else class="ai-message">
                 <div v-if="message.thinking" class="thinking">
                   <h4>分析过程</h4>
@@ -96,6 +104,8 @@ interface Message {
   thinking?: string
   commands?: Command[]
   result?: string
+  uiData?: string
+  timestamp?: string
 }
 
 // 响应式状态
@@ -196,6 +206,7 @@ const initSocket = (): void => {
   // 监听任务最终结果
   socket.value.on('task-result', (result) => {
     console.log('任务最终结果:', result)
+    isProcessing.value = false
     // 更新最后一条AI消息
     for (let i = chatHistory.value.length - 1; i >= 0; i--) {
       if (chatHistory.value[i].role === 'ai') {
@@ -279,23 +290,43 @@ const scrollToBottom = async (): Promise<void> => {
 // 监听聊天历史变化，自动滚动
 watch(chatHistory, scrollToBottom, { deep: true })
 
-onMounted(async () => {
-  // 初始化WebSocket连接
-  initSocket()
-
-  await checkConnection()
-
-  // 定时检查连接和刷新截图
-  setInterval(async () => {
-    await checkConnection()
-  }, 10000)
-})
-
-// 在组件卸载时关闭WebSocket连接
-onUnmounted(() => {
-  if (socket.value) {
-    socket.value.disconnect()
+/**
+ * 获取格式化的UI元素
+ */
+const getFormattedUI = async (): Promise<void> => {
+  try {
+    const response = await axios.get('/api/ui/formatted')
+    if (response.data.success) {
+      chatHistory.value.push({
+        role: 'system',
+        uiData: response.data.formattedUI,
+        timestamp: new Date(response.data.timestamp).toLocaleString(),
+      })
+      scrollToBottom()
+    }
+  } catch (error) {
+    console.error('获取UI元素失败:', error)
+    chatHistory.value.push({
+      role: 'system',
+      content: '获取UI元素失败',
+    })
+    scrollToBottom()
   }
+}
+
+onMounted(() => {
+  checkConnection()
+  initSocket()
+  // 定期更新状态
+  const intervalId = setInterval(checkConnection, 10000)
+
+  // 卸载时清除定时器
+  onUnmounted(() => {
+    clearInterval(intervalId)
+    if (socket.value) {
+      socket.value.disconnect()
+    }
+  })
 })
 </script>
 
@@ -413,5 +444,48 @@ body {
     height: auto;
     max-height: 40vh;
   }
+}
+
+.ui-btn {
+  margin-left: 10px;
+  padding: 0.5rem 1rem;
+  background-color: #594f8d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ui-btn:hover {
+  background-color: #4e3aa8;
+}
+
+.ui-data {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.ui-data h4 {
+  color: #8e88c2;
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.ui-data pre {
+  font-family: monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  color: #ddd;
+  background-color: #333;
+  padding: 8px;
+  border-radius: 4px;
+  max-height: 300px;
+  overflow-y: auto;
 }
 </style>
