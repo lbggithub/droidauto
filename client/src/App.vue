@@ -157,6 +157,11 @@ const initSocket = (): void => {
     console.log('WebSocket连接已建立')
   })
 
+  // 监听指令开始处理
+  socket.value.on('handle-instruction-start', () => {
+    isProcessing.value = true
+  })
+
   // 监听指令响应
   socket.value.on('instruction-response', (response) => {
     console.log('收到指令响应:', response)
