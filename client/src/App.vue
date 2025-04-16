@@ -23,6 +23,10 @@
       </div>
 
       <div class="control-panel">
+        <div class="chat-history-header">
+          <h3>操作记录</h3>
+          <button @click="clearChatHistory" class="clear-btn"><i class="fas fa-trash"></i> 清空记录</button>
+        </div>
         <div class="chat-history" ref="chatHistoryContainer">
           <div v-for="(message, index) in chatHistory" :key="index" class="message" :class="message.role">
             <div class="message-content">
@@ -136,6 +140,13 @@ const refreshScreenshot = async (): Promise<void> => {
 }
 
 /**
+ * 清空聊天记录
+ */
+const clearChatHistory = (): void => {
+  chatHistory.value = []
+}
+
+/**
  * 初始化WebSocket连接
  */
 const initSocket = (): void => {
@@ -148,6 +159,9 @@ const initSocket = (): void => {
 
   // 监听指令响应
   socket.value.on('instruction-response', (response) => {
+    console.log('收到指令响应:', response)
+
+    // 如果是在处理中状态，则直接添加新的AI消息
     chatHistory.value.push({
       role: 'ai',
       thinking: response.thinking,
@@ -155,7 +169,11 @@ const initSocket = (): void => {
       result: response.result,
     })
 
-    isProcessing.value = false
+    // 只有当不是持续处理时才结束处理状态
+    if (response.isTaskComplete || !response.commands || response.commands.length === 0) {
+      isProcessing.value = false
+    }
+
     refreshScreenshot()
     scrollToBottom()
   })
@@ -177,26 +195,6 @@ const initSocket = (): void => {
     for (let i = chatHistory.value.length - 1; i >= 0; i--) {
       if (chatHistory.value[i].role === 'ai') {
         chatHistory.value[i].result = result.result
-        scrollToBottom()
-        break
-      }
-    }
-  })
-
-  // 监听指令响应更新
-  socket.value.on('instruction-response-update', (update) => {
-    console.log('指令响应更新:', update)
-    // 更新最后一条AI消息
-    for (let i = chatHistory.value.length - 1; i >= 0; i--) {
-      if (chatHistory.value[i].role === 'ai') {
-        // 添加新命令
-        if (update.commands) {
-          chatHistory.value[i].commands = [...(chatHistory.value[i].commands || []), ...update.commands]
-        }
-        // 更新结果
-        if (update.result) {
-          chatHistory.value[i].result = update.result
-        }
         scrollToBottom()
         break
       }
@@ -356,6 +354,32 @@ body {
 .device-screen {
   flex: 1;
   min-height: 0;
+}
+
+.chat-history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  background-color: #f5f5f5;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.clear-btn {
+  background-color: #ff4d4d;
+  color: white;
+  border: none;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.clear-btn:hover {
+  background-color: #ff3333;
 }
 
 .chat-history {

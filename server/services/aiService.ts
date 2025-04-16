@@ -173,6 +173,14 @@ function buildInstructionPrompt(instruction: string, screenshot: any, uiElements
 - isTaskComplete: 布尔值，指示此命令执行后任务是否完成
 - isFinalCommand: 布尔值，指示此命令是否为当前步骤的最后一个命令(可选，默认最后一个命令为最终命令)
 
+点击屏幕的正确格式为：
+{"type": "tap", "x": 160, "y": 200, "isTaskComplete": false, "isFinalCommand": true}
+注意: 不要使用coordinate:[160, 200]参数，必须使用x和y
+
+滑动屏幕的正确格式为：
+{"type": "swipe", "startX": 160, "startY": 800, "endX": 160, "endY": 200, "duration": 300, "isTaskComplete": false}
+注意: 不要使用coordinate或coordinate2参数，必须使用startX, startY, endX, endY
+
 完整的响应格式示例：
 {
   "thinking": "我对当前屏幕的分析...",
@@ -270,6 +278,14 @@ function buildErrorCorrectionPrompt(error: ErrorInfo, screenshot: any, uiElement
   例如: {"type": "app_switch"}
 - composite: 复合命令，必须包含commands数组
   例如: {"type": "composite", "commands": [{"type": "tap", "x": 160, "y": 200}, {"type": "wait", "duration": 1000}]}
+
+点击屏幕的正确格式为：
+{"type": "tap", "x": 160, "y": 200, "isTaskComplete": false, "isFinalCommand": true}
+注意: 不要使用coordinate:[160, 200]参数，必须使用x和y
+
+滑动屏幕的正确格式为：
+{"type": "swipe", "startX": 160, "startY": 800, "endX": 160, "endY": 200, "duration": 300, "isTaskComplete": false}
+注意: 不要使用coordinate或coordinate2参数，必须使用startX, startY, endX, endY
 
 完整的响应格式示例：
 {
@@ -534,7 +550,6 @@ async function callLLMAPI(prompt: PromptContent, screenshot: any = null): Promis
       max_tokens: 4096,
       top_p: 0.7,
       n: 1,
-      response_format: { type: 'json_object' },
     }
 
     // 记录图片数量（如果有）

@@ -61,6 +61,9 @@ export function setupSocketHandlers(io: SocketServer): void {
           },
         }
 
+        // 先将AI处理结果发送回客户端
+        socket.emit('instruction-response', response)
+
         // 执行AI返回的命令
         if (response.commands && response.commands.length > 0) {
           for (const command of response.commands) {
@@ -115,11 +118,8 @@ export function setupSocketHandlers(io: SocketServer): void {
 
                 // 如果有新命令要执行，添加到响应中
                 if (continuationResponse.commands && continuationResponse.commands.length > 0) {
-                  // 合并响应
-                  response.commands = [...response.commands, ...continuationResponse.commands]
-
-                  // 发送更新的响应给客户端
-                  socket.emit('instruction-response-update', continuationResponse)
+                  // 将新的响应单独发送给客户端，避免与之前的响应合并
+                  socket.emit('instruction-response', continuationResponse)
                 }
               }
             } catch (error) {
@@ -138,9 +138,6 @@ export function setupSocketHandlers(io: SocketServer): void {
             }
           }
         }
-
-        // 发送AI处理结果回客户端
-        socket.emit('instruction-response', response)
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error)
         logger.error(`处理指令时出错: ${errorMessage}`)
